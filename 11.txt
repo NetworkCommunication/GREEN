@@ -1,0 +1,85 @@
+import cvxpy as cp
+import mosek
+import numpy as np
+import math
+def finished_green(qc, lll, kkk):
+    yc = [[0 for _ in range(K)] for _ in range(40)]
+    ir1 = [[0 for _ in range(K)] for _ in range(40)]
+    ir2 = [[0 for _ in range(K)] for _ in range(40)]
+    for m in range(40):
+        for k in range(K):
+            ik = 0
+            for j in range(K):
+                ik += 1 / ((np.linalg.norm(qc[m][j] - s[k])) ** 2)
+            ir1[m][k] = ik
+    for m in range(40):
+        for k in range(K):
+            ik = 0
+            for j in range(K):
+                if j != k:
+                    # co-interfernece
+                    ik += 1 / ((np.linalg.norm(qc[m][j] - s[k])) ** 2)
+            ir2[m][k] = ik
+    for m in range(1, 40):
+        for k in range(K):
+            yc[m][k] = math.sqrt(np.linalg.norm(qc[m][k][0:2] - qc[m - 1][k][0:2]) ** 2 + math.sqrt(
+                np.linalg.norm(qc[m][k][0:2] - qc[m - 1][k][0:2]) ** 4 + 32855))
+    q = []
+    y = []
+    for n in range(40):
+        q.append(cp.Variable(shape=(K, 3)))
+        y.append(cp.Variable(shape=(K, 1), nonneg=True))
+    objfunc = []
+    for m in range(40):
+        for k in range(K):
+            term1 = 0
+            for j in range(K):
+                term1 += -1.44 * (cp.norm(q[m][j] - s[k]) ** 2 - (cp.norm(qc[m][j] - s[k]) ** 2)) / (
+                        np.linalg.norm(qc[m][j] - s[k]) ** 4)
+                objfunc.append(kkk * term1 / (1 + ir1[m][k]))
+            objfunc.append(kkk * math.log(ir1[m][k] + 1) / math.log(2))
+
+            term2 = []
+            for j in range(K):
+                ratio = -1 / (1 + ir2[m][k])
+                if j != k:
+                    det = np.linalg.norm(qc[m][j] - s[k]) ** 2 + 2 * (qc[m][j] - s[k]).transpose() * (
+                            q[m][j] - qc[m][j])
+                    term2.append(ratio * cp.inv_pos(det))
+            # sum
+            objfunc.append(kkk * (cp.sum(term2) - math.log(1 + ir2[m][k]) + (ir2[m][k] / (1 + ir2[m][k]))))
+
+    # ------------------------------------------------能量
+    for n in range(1, 40):
+        for k in range(K):
+            # lamuda = 0.01, work on Dinkelbach's algorithm
+            objfunc.append(-1 * lll * (cp.inv_pos(y[n][k]) * 5194.8 + 0.002 * cp.norm(q[n][k][0:2] - q[n - 1][k][0:2]) ** 3))
+
+
+    constr = []
+    for n in range(1, 40):
+        for k in range(K):
+            constr.append((y[n][k] ** 2) * (yc[n][k] ** 3) <= 32855 * yc[n][k] - 65710 * (y[n][k] - yc[n][k]) + 4 * (
+                    qc[n][k][0:2] - qc[n - 1][k][0:2]).transpose() * (q[n][k][0:2] - q[n - 1][k][0:2])
+                          * (yc[n][k] ** 3) - 2 * (cp.norm(qc[n][k][0:2] - qc[n - 1][k][0:2]) ** 2) * (yc[n][k] ** 3))
+            constr.append(cp.norm(q[n][k][0:2] - q[n - 1][k][0:2]) <= 60)
+
+
+    for k in range(K):
+        constr.append(q[0][k] == q0[k])
+        constr.append(q[39][k] == qn[k])
+
+    for n in range(40):
+        for k in range(K):
+            # constr.append(q[n][k][2] == qc[n][k][2])
+            constr.append(q[n][k][2] == 100)
+            # dmin=30m
+            for j in range(k + 1, K):
+                constr.append(
+                    2 * (qc[n][k][0:2] - qc[n][j][0:2]).transpose() * (q[n][k][0:2] - q[n][j][0:2]) >= cp.norm(
+                        qc[n][k][0:2] - qc[n][j][0:2]) ** 2 + 30 ** 2)
+
+    prob = cp.Problem(cp.Maximize(sum(objfunc)), constr)
+    prob.solve(solver=cp.MOSEK)
+    print("optimal value", prob.value)
+    return [qv.value for qv in q]
