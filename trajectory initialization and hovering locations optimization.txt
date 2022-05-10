@@ -1,0 +1,110 @@
+import cvxpy as cp
+import mosek
+import numpy as np
+import math
+K = 4
+s = np.array([[750, 750, 0], [100, 900, 0], [400, 0, 0], [100, 600, 0]])
+def path_init():
+    q = []
+    time = [28.37, 23.73, 10.9, 16.24]
+    q.append(np.array([
+        [0, 30, 100],
+        [30, 30, 130],
+        [0, 0, 190],
+        [30, 0, 160]
+    ]))
+    Vme = [((qn[k][0] - q[0][k][0]) / time[k], (qn[k][1] - q[0][k][1]) / time[k]) for k in range(K)]
+    h = [100, 130, 190, 160]
+    print(Vme)
+    for i in range(1, 11):
+        q.append(np.array([[q[0][k][0] + i * Vme[k][0], q[0][k][1] + i * Vme[k][1], h[k]] for k in range(K)]))
+        # print(q[i])
+    # q[11]
+    q.append(np.array([[291.18787452, 309.55586888, 100], [62.44837758, 432.35988201, 130], [400, 0, 160],
+                       [77.4137931, 400.98522167, 160]]))
+    Vme1 = [[26.471624955939372, 25.41416989777934], [2.949852507374631, 36.57817109144543], [0, 0],
+            [4.310344827586207, 36.45320197044335]]
+    # q[12]----q[16]
+    h1 = [100, 130, 100, 160]
+    for i in range(1, 6):
+        q.append(np.array([[q[11][k][0] + i * Vme1[k][0], q[11][k][1] + i * Vme1[k][1], h1[k]] for k in range(K)]))
+    # q[17]
+    q.append(
+        np.array([[450.01762426, 462.04088827, 100], [80.14749262, 651.82890856, 130], [400, 0, 100], [100, 592, 130]]))
+    Vme2 = [[26.471624955939372, 25.41416989777934], [2.949852507374631, 36.57817109144543], [0, 0], [0, 0]]
+    # q[18]----q[23]
+    h2 = [100, 130, 100, 100]
+    for i in range(1, 7):
+        q.append(np.array([[q[17][k][0] + i * Vme2[k][0], q[17][k][1] + i * Vme2[k][1], h2[k]] for k in range(K)]))
+    # q[24]
+    q.append(np.array([[635.31899895, 639.94007755, 100], [100, 898, 100], [400, 0, 100], [100, 592, 100]]))
+    Vme3 = [[26.471624955939372, 25.41416989777934], [0, 0], [0, 0], [0, 0]]
+    # q[25]----q[28]
+    for i in range(1, 5):
+        q.append(np.array([[q[24][k][0] + i * Vme3[k][0], q[24][k][1] + i * Vme3[k][1], hmin] for k in range(K)]))
+    # q[29]----q[39]
+    for i in range(1, 12):
+        q.append(np.array([[751, 751, 100], [100, 898, 100], [400, 0, 100], [100, 592, 100]]))
+    print(q)
+def find_hoovering_point(qc):
+    ir = [0 for _ in range(K)]
+    ir1 = [0 for _ in range(K)]
+
+    # update ir
+    for k in range(K):
+        ik = 0
+        for j in range(K):
+            ik += 1 / ((np.linalg.norm(qc[j] - s[k])) ** 2)
+        ir1[k] = ik
+
+    for k in range(K):
+        ik = 0
+        for j in range(K):
+            if j != k:
+                # 来自其它base station的干扰 -------(18)------算法1，步骤5
+                ik += 1 / ((np.linalg.norm(qc[j] - s[k])) ** 2)
+        ir[k] = ik
+
+    q = []
+    for k in range(K):
+        q.append(cp.Variable(shape=(3)))
+
+    
+    objfunc = []
+    for k in range(K):
+        term1 = 0
+        for j in range(K):
+            term1 += -1 * (cp.norm(q[j] - s[k]) ** 2 - (cp.norm(qc[j] - s[k]) ** 2)) / (
+                    np.linalg.norm(qc[j] - s[k]) ** 4)
+            objfunc.append(term1 / (1 + ir1[k]))
+        objfunc.append(math.log(ir1[k] + 1))
+
+        term2 = []
+        for j in range(K):
+            ratio = -1 / (1 + ir[k])
+            if j != k:
+                det = np.linalg.norm(qc[j] - s[k]) ** 2 + 2 * (qc[j] - s[k]).transpose() * (q[j] - qc[j])
+                term2.append(ratio * cp.inv_pos(det))
+        # sum
+        objfunc.append(cp.sum(term2))
+
+    constr = []
+    for k in range(K):
+        constr.append(q[k][2] == 100)
+        for j in range(2):
+            constr.append(q[k][j] >= 0)
+            constr.append(q[k][j] <= 1000)
+
+    # sum
+    prob = cp.Problem(cp.Maximize(sum(objfunc)), constr)
+    prob.solve()
+    print("optimal value", prob.value)
+    return [qv.value for qv in q]
+def main():
+    q = np.array([[750, 750, 100], [100, 900, 100], [400, 0, 100], [100, 600, 100]])
+    #path_init()
+    while True:
+        q.append(find_hoovering_point(q[-1))
+
+if __name__ == '__main__':
+    main()
