@@ -1,44 +1,8 @@
-# 穷举找Vmr
-def multi(v):
-    E = 5194.8 / (v * np.sqrt(v ** 2 + np.sqrt(v ** 4 + 32855))) + 0.002 * v * v
-    # E = v ** 2
-    return E
-def find(func, min_, max_, step=0.01):
-    i = min_
-    while min_ < i + step < max_:
-        print(func(i))
-        print(i)
-        i += step
-find(multi, 36, 38)
-#----------------------------------------------------------------------
-#gurobi找Vme
-def gurobi_demo6_energy_Vme():
-    model = grb.Model('')
-    v = model.addVar(vtype=GRB.CONTINUOUS, name='v')
-    y1 = model.addVar(vtype=GRB.CONTINUOUS, name='y1')
-    y2 = model.addVar(vtype=GRB.CONTINUOUS, name='y2')
-    y11 = model.addVar(vtype=GRB.CONTINUOUS, name='y11')
-    o = model.addVar(vtype=GRB.CONTINUOUS, name='o')
-    o1 = model.addVar(vtype=GRB.CONTINUOUS, name='o1')
-    o11 = model.addVar(vtype=GRB.CONTINUOUS, name='o11')
-    model.update()
-    model.addGenConstrPow(v, y1, 4, "x * x * x * x")
-    model.addGenConstrPow(v, y2, 3, "x * x * x")
-    model.addConstr(y11 * y11 == y1 + 32855)
-    model.addConstr(o1 * o1 == y11 + v * v)
-    model.addConstr(o * o1 == 5194.8)
-    sum = LinExpr()
-    sum += o + 0.002 * y2
-    model.setObjective(sum, sense=GRB.MINIMIZE)
-    model.addConstr(v >= 0)
-    model.addConstr((v <= 50))
-    model.setParam('NonConvex', 2)
-    model.setParam('NumericFocus', 2)
-    model.optimize()
-    for v in model.getVars():
-        print('var name is {}, var value is {}'.format(v.VarName, v.X))
-#--------------------------------------------------------------------------------
-#cvxpy 找Vme  利用SCA 最优解果同上
+import cvxpy as cp
+import mosek
+import numpy as np
+import math
+#find Vme with SCA
 def cvx_find_Vmr(vc):
     sc = math.sqrt(vc**2 + math.sqrt(vc**4 + 32855))
     v = cp.Variable()
