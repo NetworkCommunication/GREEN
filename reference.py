@@ -84,7 +84,7 @@ def find_hoovering_point(qc):
         ik = 0
         for j in range(K):
             if j != k:
-                # 来自其它base station的干扰 -------(18)------算法1，步骤5
+                # co-channel interference
                 ik += 1 / ((np.linalg.norm(qc[j] - s[k])) ** 2)
         ir[k] = ik
 
