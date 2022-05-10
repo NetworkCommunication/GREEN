@@ -2,6 +2,12 @@ import cvxpy as cp
 import mosek
 import numpy as np
 import math
+hmin = 100
+K = 4
+s = np.array([[750, 750, 0], [100, 900, 0], [400, 0, 0], [100, 600, 0]])
+q0 = np.array([[0, 30, 100], [30, 30, 100], [0, 0, 100], [30, 0, 100]])
+qn = np.array([[751, 751, hmin], [100, 898, hmin], [400, 0, hmin], [100, 592, hmin]])
+#MAX f(x)/y(x)---------->MAX f(x)-llly(x) Dinkelbach’s algorithm
 def finished_green(qc, lll, kkk):
     yc = [[0 for _ in range(K)] for _ in range(40)]
     ir1 = [[0 for _ in range(K)] for _ in range(40)]
@@ -49,7 +55,7 @@ def finished_green(qc, lll, kkk):
             # sum
             objfunc.append(kkk * (cp.sum(term2) - math.log(1 + ir2[m][k]) + (ir2[m][k] / (1 + ir2[m][k]))))
 
-    # ------------------------------------------------能量
+    # ------------------------------------------------ENERGY CONSUMPTION
     for n in range(1, 40):
         for k in range(K):
             # lamuda = 0.01, work on Dinkelbach's algorithm
@@ -62,6 +68,7 @@ def finished_green(qc, lll, kkk):
             constr.append((y[n][k] ** 2) * (yc[n][k] ** 3) <= 32855 * yc[n][k] - 65710 * (y[n][k] - yc[n][k]) + 4 * (
                     qc[n][k][0:2] - qc[n - 1][k][0:2]).transpose() * (q[n][k][0:2] - q[n - 1][k][0:2])
                           * (yc[n][k] ** 3) - 2 * (cp.norm(qc[n][k][0:2] - qc[n - 1][k][0:2]) ** 2) * (yc[n][k] ** 3))
+            #Vmax = 60
             constr.append(cp.norm(q[n][k][0:2] - q[n - 1][k][0:2]) <= 60)
 
 
